@@ -21,7 +21,7 @@ const getRootFolder = () => {
         rootFolder = prompt();
         shell.cd(rootFolder);
         log("Current Location: ")
-        shell.exec("pwd");
+        shell.exec("cd");
     } catch (e) {
         log(e);
         continueProcess(optionDirectory, optionExit);
