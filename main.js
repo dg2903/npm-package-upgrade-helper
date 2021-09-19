@@ -7,58 +7,61 @@ let rootFolder = null;
 let rootFolderContents = [];
 let nextProcess = null;
 
-const continueProcess = () => {
-    console.log("Try another package or change directory.");
-    console.log("1 - Try another pacakge");
-    console.log("2 - Change directory");
-    console.log("3 - Exit");
-    nextProcess = prompt();
-    if(nextProcess === "1"){
-        choosePackage();
-    } else if (nextProcess === "2") {
-        getRootFolder();
-    } else if (nextProcess === "3"){
-        shell.exit(1);
-    }
-    continueProcess();
+const log = (log) => {
+    console.log("\x1B[31m" + log + "\x1B[0m");
+}
+
+const exit = () => {
+    shell.exit(1);
 }
 
 const getRootFolder = () => {
-    console.log("Root folder:");
+    log("Root folder:");
     try {
         rootFolder = prompt();
         shell.cd(rootFolder);
-        console.log("Current Location: ")
+        log("Current Location: ")
         shell.exec("pwd");
     } catch (e) {
-        console.log(e);
-        continueProcess();
+        log(e);
+        continueProcess(optionDirectory, optionExit);
     }
     process();
-    continueProcess();
+    continueProcess(optionPackage, optionDirectory, optionExit);
 }
-// console.log(rootFolderContents);
 
 const choosePackage = () => {
-    console.log("Tell me your package@version that has issue: ");
+    log("Package <name>@<version>: ");
     package = prompt();
     packageDependencies = shell.exec(`npm list ${package}`).stdout.split("\n");
     packageDependencies = packageDependencies.filter(content => content !== '');
     packageDependencies.shift(); // remove first element because it's the root package which is not needed for parsing.
-    console.log(packageDependencies);
     checkForUpgradableDependencies(packageDependencies);
+}
+
+const optionPackage = {name: "Choose Package", method: choosePackage};
+const optionDirectory = {name: "Choose Directory", method: getRootFolder};
+const optionExit = {name: "Exit", method: exit}
+
+const continueProcess = (...options) => {
+    log("Options: ");
+    options.forEach((option, key) => {
+        log(`${key} - ${option.name}`)
+    })
+    nextProcess = prompt();
+    options[nextProcess].method();
+    continueProcess(optionPackage, optionDirectory, optionExit);
 }
 
 const process = () => {
     rootFolderContents = shell.ls(rootFolder);
-    console.log(rootFolderContents);
     const packageJson = rootFolderContents.find(element => element === "package.json");
     if (packageJson) {
-        console.log("package.json found.");
+        log("package.json found.");
         choosePackage();
     } else {
-        console.log("This location has no package.json. Try another directory");
-        continueProcess();
+        log("This location has no package.json. Try another directory");
+        continueProcess(optionDirectory, optionExit);
     }
 }
 
@@ -77,7 +80,6 @@ const buildNode = (list) => {
         }
         nodeList.push(node);
     });
-    // console.log(nodeList);
     return nodeList;
 }
 
@@ -88,7 +90,13 @@ class Node {
     }
 
     print() {
+        console.log("\x1B[34m##############################################################################################\x1B[0m");
+        console.log("\x1B[34m######################################## Result Below ########################################\x1B[0m");
+        console.log("\x1B[34m##############################################################################################\x1B[0m");
         this.child.forEach(child => this.printChild(child));
+        console.log("\x1B[34m##############################################################################################\x1B[0m");
+        console.log("\x1B[34m######################################### Result End #########################################\x1B[0m");
+        console.log("\x1B[34m##############################################################################################\x1B[0m");
     }
 
     printChild(child) {
@@ -110,7 +118,6 @@ class Node {
             }
             child.child.forEach(kid => this.find(kid));
             const configs = shell.exec(`npm view ${child.data.name}@${child.data.version} dependencies`).stdout.split('\n');
-            console.log(configs);
             configs.forEach(config => {
                 child.child.forEach(kid => {
                     if(config.includes("'"+kid.data.name+"'") || config.includes(kid.data.name+":")){
@@ -129,15 +136,15 @@ class Node {
                         }
                         kid.data.textToPrint = kid.data.textToPrint.replace(kid.data.version, newVersionLabel);
                         if(minorUpgradable || patchUpgradable){
-                            kid.data.textToPrint = "\x1B[32m " + kid.data.textToPrint + " \x1B[0m";
+                            kid.data.textToPrint = "\x1B[34m" + kid.data.textToPrint + "\x1B[0m";
                         }
                         // kid.data.textToPrint = kid.data.textToPrint;
                     }
                 })
             })
         } catch (e) {
-            console.log("Try something else");
-            continueProcess();
+            log("Try something else");
+            continueProcess(optionPackage, optionDirectory, optionExit);
         }
     }
 };
