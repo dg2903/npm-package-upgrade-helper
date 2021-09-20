@@ -83,6 +83,8 @@ const buildNode = (list) => {
     return nodeList;
 }
 
+let cachedConfigs = {};
+
 class Node {
     constructor(data) {
         this.data = data;
@@ -117,26 +119,46 @@ class Node {
                 return;
             }
             child.child.forEach(kid => this.find(kid));
-            const configs = shell.exec(`npm view ${child.data.name}@${child.data.version} dependencies`).stdout.split('\n');
+            let configs = null;
+            if(cachedConfigs[`${child.data.name}@${child.data.version}`]){
+                configs = cachedConfigs[`${child.data.name}@${child.data.version}`];
+            } else {
+                configs = shell.exec(`npm view ${child.data.name}@${child.data.version} dependencies`).stdout.split('\n');
+                cachedConfigs[`${child.data.name}@${child.data.version}`] = configs;
+            }
             configs.forEach(config => {
                 child.child.forEach(kid => {
                     if(config.includes("'"+kid.data.name+"'") || config.includes(kid.data.name+":")){
                         let minorUpgradable = false;
                         let patchUpgradable = false;
-                        if(config.includes("^")){
-                            minorUpgradable = true;
+                        let rangedUpgradable = false;
+                        let newVersionLabel = kid.data.version;
+                        let rangedVersion = "";
+                        let unknownPackageName = false;
+                        if(config.includes("<") || config.includes(">") || config.includes("=") || config.includes("|")){
+                            rangedUpgradable = true;
+                            const splittedString = config.split(":");
+                            if(splittedString.length > 1){
+                                rangedVersion = splittedString[1].replace(/'/g, '').replace(",", "");
+                            } else {
+                                unknownPackageName = true;
+                            }
                         } else if (config.includes("~")){
                             patchUpgradable = true;
-                        }
-                        let newVersionLabel = kid.data.version;
-                        if(minorUpgradable){
-                            newVersionLabel = "^" + newVersionLabel;
-                        } else if(patchUpgradable){
                             newVersionLabel = "~" + newVersionLabel;
+                        } else if (config.includes("^")){
+                            minorUpgradable = true;
+                            newVersionLabel = "^" + newVersionLabel;
                         }
                         kid.data.textToPrint = kid.data.textToPrint.replace(kid.data.version, newVersionLabel);
-                        if(minorUpgradable || patchUpgradable){
+                        if(minorUpgradable || patchUpgradable || rangedUpgradable){
                             kid.data.textToPrint = "\x1B[34m" + kid.data.textToPrint + "\x1B[0m";
+                        }
+                        if(rangedUpgradable){
+                            kid.data.textToPrint = kid.data.textToPrint + " \x1B[33mUpgradable within this range: " + rangedVersion + "\x1B[0m";
+                        }
+                        if(unknownPackageName){
+                            kid.data.textToPrint = kid.data.textToPrint + "\x1B[31m Cannot determine, check this package's parent.\x1B[0m";
                         }
                         // kid.data.textToPrint = kid.data.textToPrint;
                     }
@@ -170,8 +192,11 @@ const buildNodeTree = (nodeList) => {
 const checkForUpgradableDependencies = (packageDependencies) => {
     const nodeList = buildNode(packageDependencies);
     const nodeTree = buildNodeTree(nodeList);
+    cachedConfigs = {};
     // nodeTree.print();
+    console.time("timer");
     nodeTree.updateUpgradablePackage();
+    console.timeEnd("timer");
     nodeTree.print();
 }
 
